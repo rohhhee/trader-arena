@@ -15,13 +15,8 @@ LOOKBACK_TRADING_DAYS = 60
 YAHOO_RANGE = "9mo"
 REQUEST_TIMEOUT = 20
 
-# KRX is generally Mon-Fri, but public holidays and some exchange-designated days are closed.
-# The holiday library below catches Korean public holidays; these two dates are explicitly
-# kept for the current October 2026 run because 2026-10-05 is a substitute holiday.
 EXTRA_CLOSED = {"2026-10-05", "2026-12-31"}
 
-# Candidate universe: large/liquid Korean equities across KOSPI/KOSDAQ.
-# The system scores historical price/volume first, then each trader applies a different rule.
 UNIVERSE = [
     {"name": "삼성전자", "code": "005930", "symbol": "005930.KS"},
     {"name": "SK하이닉스", "code": "000660", "symbol": "000660.KS"},
@@ -50,25 +45,11 @@ UNIVERSE = [
     {"name": "크래프톤", "code": "259960", "symbol": "259960.KS"},
 ]
 
-# A configurable NPS-style watchlist. The values are PRIORITY WEIGHTS, not live NPS holdings.
-# This intentionally avoids claiming that the public NPS disclosure is real-time.
-# Update this list when the latest official NPS large-holding disclosure changes.
 NPS_WATCHLIST = {
-    "005930": 1.00,
-    "000660": 1.00,
-    "035420": 0.95,
-    "105560": 0.95,
-    "055550": 0.90,
-    "086790": 0.90,
-    "012330": 0.90,
-    "005490": 0.90,
-    "207940": 0.85,
-    "068270": 0.85,
-    "005380": 0.85,
-    "000270": 0.80,
-    "066570": 0.80,
-    "051910": 0.75,
-    "006400": 0.75,
+    "005930": 1.00, "000660": 1.00, "035420": 0.95, "105560": 0.95,
+    "055550": 0.90, "086790": 0.90, "012330": 0.90, "005490": 0.90,
+    "207940": 0.85, "068270": 0.85, "005380": 0.85, "000270": 0.80,
+    "066570": 0.80, "051910": 0.75, "006400": 0.75,
 }
 
 NEWS_KEYWORDS = [
@@ -77,6 +58,12 @@ NEWS_KEYWORDS = [
     "정책", "정부", "규제", "관세", "방산", "조선", "원전", "반도체", "인공지능", "배터리",
     "수주", "계약", "수출", "지원", "투자", "증설", "실적", "가이던스",
 ]
+
+TRADERS = {
+    "chart": {"name": "윤서진", "role": "차트 & 수급"},
+    "policy": {"name": "박도현", "role": "뉴스 & 정책"},
+    "nps": {"name": "김하린", "role": "NPS FLOW"},
+}
 
 
 def kst_now():
@@ -98,14 +85,12 @@ def yahoo_history(symbol):
     result = (obj.get("chart", {}).get("result") or [None])[0]
     if not result:
         raise RuntimeError("Yahoo history unavailable")
-
     timestamps = result.get("timestamp") or []
     indicators = result.get("indicators", {})
     quote = (indicators.get("quote") or [{}])[0]
     adj = (indicators.get("adjclose") or [{}])[0].get("adjclose") or []
     closes = adj if adj else (quote.get("close") or [])
     volumes = quote.get("volume") or []
-
     rows = []
     for i, ts in enumerate(timestamps):
         if i >= len(closes):
@@ -122,7 +107,6 @@ def yahoo_history(symbol):
 
 
 def yahoo_quote(symbol):
-    # A separate 1d request is used for the latest available price.
     url = (
         f"https://query1.finance.yahoo.com/v8/finance/chart/{quote_plus(symbol)}"
         f"?interval=1m&range=1d&events=history"
@@ -144,7 +128,6 @@ def yahoo_quote(symbol):
 
 
 def yahoo_news(query):
-    """Best-effort Yahoo search/news signal. If unavailable, price/volume rules still work."""
     url = (
         "https://query2.finance.yahoo.com/v1/finance/search?"
         f"q={quote_plus(query)}&quotesCount=0&newsCount=8&enableFuzzyQuery=false"
@@ -171,7 +154,10 @@ def sma(values, n):
 def stdev_pct(values):
     if len(values) < 3:
         return 0.0
-    rs = [(values[i] / values[i - 1] - 1.0) * 100.0 for i in range(1, len(values)) if values[i - 1] != 0]
+    rs = [
+        (values[i] / values[i - 1] - 1.0) * 100.0
+        for i in range(1, len(values)) if values[i - 1] != 0
+    ]
     if len(rs) < 2:
         return 0.0
     mean = sum(rs) / len(rs)
@@ -181,9 +167,7 @@ def stdev_pct(values):
 def position_in_range(closes, n=60):
     window = closes[-n:]
     lo, hi = min(window), max(window)
-    if hi == lo:
-        return 50.0
-    return (window[-1] - lo) / (hi - lo) * 100.0
+    return 50.0 if hi == lo else (window[-1] - lo) / (hi - lo) * 100.0
 
 
 def volume_ratio(volumes, short=5, long=20):
@@ -260,14 +244,12 @@ def news_score_for(name, news):
     for item in news:
         title = str(item.get("title") or "").lower()
         hits += sum(1 for k in NEWS_KEYWORDS if k.lower() in title)
-    # capped small bonus: this is a catalyst signal, not an investment prediction.
     return round(min(16.0, hits * 2.0), 1), len(news)
 
 
 def choose_unique(score_lists):
     selected = {}
     used = set()
-    # First give each trader its best available candidate. The order is only tie-breaking.
     for trader_id in ("chart", "policy", "nps"):
         for item in score_lists[trader_id]:
             if item["code"] not in used:
@@ -290,7 +272,6 @@ def select_daily_picks():
     if len(metrics_by_code) < 8:
         raise RuntimeError(f"Too few candidates with 60-day data: {len(metrics_by_code)}")
 
-    # News is fetched only for the strongest price/volume candidates to reduce requests.
     news_candidates = sorted(
         metrics_by_code.values(),
         key=lambda x: x["metrics"]["ret_20d"] + (x["metrics"]["vol_ratio"] - 1) * 8,
@@ -301,82 +282,68 @@ def select_daily_picks():
         news_bonus[item["code"]] = news_score_for(item["name"], yahoo_news(item["name"]))
         time.sleep(0.10)
 
-    chart_scores = []
-    policy_scores = []
-    nps_scores = []
+    score_lists = {"chart": [], "policy": [], "nps": []}
     for item in metrics_by_code.values():
         m = item["metrics"]
-        c_score = chart_score(m)
         p_news, news_count = news_bonus.get(item["code"], (0.0, 0))
-        p_score = policy_score(m, p_news)
-        n_score = nps_score(m, NPS_WATCHLIST.get(item["code"], 0.0))
         base = {
-            "name": item["name"],
-            "code": item["code"],
-            "symbol": item["symbol"],
-            "metrics": m,
-            "news_bonus": p_news,
-            "news_count": news_count,
+            "name": item["name"], "code": item["code"], "symbol": item["symbol"],
+            "metrics": m, "news_bonus": p_news, "news_count": news_count,
             "nps_watch_weight": NPS_WATCHLIST.get(item["code"], 0.0),
         }
-        chart_scores.append({**base, "score": c_score, "strategy_reason": (
-            f"{LOOKBACK_TRADING_DAYS}거래일 관찰 · 20일 {m['ret_20d']:+.1f}% · "
-            f"60일 {m['ret_60d']:+.1f}% · 거래량 {m['vol_ratio']:.1f}배 · "
-            f"20/60일선 {'정배열' if m['price'] > m['sma20'] > m['sma60'] else '혼조'}"
-        )})
-        policy_scores.append({**base, "score": p_score, "strategy_reason": (
-            f"{LOOKBACK_TRADING_DAYS}거래일 관찰 · 20일 {m['ret_20d']:+.1f}% · "
-            f"5일 {m['ret_5d']:+.1f}% · 거래량 {m['vol_ratio']:.1f}배 · "
-            f"뉴스/촉매 보너스 {p_news:.1f}점 · 최근 뉴스 {news_count}건"
-        )})
-        nps_scores.append({**base, "score": n_score, "strategy_reason": (
-            f"{LOOKBACK_TRADING_DAYS}거래일 관찰 · NPS 공개정보 추적가중치 {NPS_WATCHLIST.get(item['code'], 0.0):.2f} · "
-            f"20일 {m['ret_20d']:+.1f}% · 60일 {m['ret_60d']:+.1f}% · "
-            f"거래량 {m['vol_ratio']:.1f}배"
-        )})
+        score_lists["chart"].append({
+            **base,
+            "score": chart_score(m),
+            "strategy_reason": (
+                f"{LOOKBACK_TRADING_DAYS}거래일 관찰 · 20일 {m['ret_20d']:+.1f}% · 60일 {m['ret_60d']:+.1f}% · "
+                f"5일 {m['ret_5d']:+.1f}% · 거래량 {m['vol_ratio']:.1f}배 · "
+                f"20/60일선 {'정배열' if m['price'] > m['sma20'] > m['sma60'] else '혼조'}"
+            ),
+        })
+        score_lists["policy"].append({
+            **base,
+            "score": policy_score(m, p_news),
+            "strategy_reason": (
+                f"{LOOKBACK_TRADING_DAYS}거래일 관찰 · 20일 {m['ret_20d']:+.1f}% · 5일 {m['ret_5d']:+.1f}% · "
+                f"거래량 {m['vol_ratio']:.1f}배 · 촉매 보너스 {p_news:.1f}점 · 최근 뉴스 {news_count}건"
+            ),
+        })
+        score_lists["nps"].append({
+            **base,
+            "score": nps_score(m, NPS_WATCHLIST.get(item["code"], 0.0)),
+            "strategy_reason": (
+                f"{LOOKBACK_TRADING_DAYS}거래일 관찰 · NPS 공개정보 추적가중치 {NPS_WATCHLIST.get(item['code'], 0.0):.2f} · "
+                f"20일 {m['ret_20d']:+.1f}% · 60일 {m['ret_60d']:+.1f}% · 거래량 {m['vol_ratio']:.1f}배"
+            ),
+        })
 
-    for scores in (chart_scores, policy_scores, nps_scores):
+    for scores in score_lists.values():
         scores.sort(key=lambda x: (x["score"], x["metrics"]["ret_20d"]), reverse=True)
 
-    selected = choose_unique({"chart": chart_scores, "policy": policy_scores, "nps": nps_scores})
-
+    selected = choose_unique(score_lists)
     output = []
-    metadata = {
+    for trader_id in ("chart", "policy", "nps"):
+        item = selected[trader_id]
+        output.append({
+            "trader_id": trader_id,
+            "trader_name": TRADERS[trader_id]["name"],
+            "role": TRADERS[trader_id]["role"],
+            "name": item["name"], "code": item["code"],
+            "score": item["score"], "reason": item["strategy_reason"],
+            "entry": None, "price": None, "return": None,
+            "status": "WAITING_ENTRY", "target_pct": GOAL, "stop_pct": STOP,
+            "quote_source": "Yahoo Finance KSE delayed", "quote_timestamp": None,
+            "history_window": f"최근 {LOOKBACK_TRADING_DAYS}거래일",
+            "training_metrics": item["metrics"],
+            "news_count": item["news_count"], "nps_watch_weight": item["nps_watch_weight"],
+        })
+    return output, {
         "lookback_trading_days": LOOKBACK_TRADING_DAYS,
         "data_range": YAHOO_RANGE,
         "selection_method": "rule-based historical scoring",
         "selection_generated_at": kst_now().isoformat(),
+        "selection_universe_size": len(metrics_by_code),
     }
-
-    configs = [
-        ("chart", "윤서진", "차트 & 수급", selected["chart"]),
-        ("policy", "박도현", "뉴스 & 정책", selected["policy"]),
-        ("nps", "김하린", "NPS FLOW", selected["nps"]),
-    ]
-    for trader_id, trader_name, role, pick in configs:
-        output.append({
-            "trader_id": trader_id,
-            "trader_name": trader_name,
-            "role": role,
-            "name": pick["name"],
-            "code": pick["code"],
-            "score": pick["score"],
-            "reason": pick["strategy_reason"],
-            "entry": None,
-            "price": None,
-            "return": None,
-            "status": "WAITING_ENTRY",
-            "target_pct": GOAL,
-            "stop_pct": STOP,
-            "quote_source": "Yahoo Finance KSE delayed",
-            "quote_timestamp": None,
-            "history_window": f"최근 {LOOKBACK_TRADING_DAYS}거래일",
-            "training_metrics": pick["metrics"],
-            "news_count": pick["news_count"],
-            "nps_watch_weight": pick["nps_watch_weight"],
-        })
-
-    return output, metadata
 
 
 def load_state():
@@ -386,16 +353,9 @@ def load_state():
         except Exception:
             pass
     return {
-        "session_date": None,
-        "status": "WAITING_SESSION",
-        "goal_pct": GOAL,
-        "stop_pct": STOP,
-        "updated_at": None,
-        "picks": [],
-        "history": [],
-        "selection_meta": {},
-        "last_error": None,
-        "server": "GitHub Actions · Yahoo Finance KSE delayed data",
+        "session_date": None, "status": "WAITING_SESSION", "goal_pct": GOAL, "stop_pct": STOP,
+        "updated_at": None, "picks": [], "history": [], "selection_meta": {},
+        "last_error": None, "server": "GitHub Actions · Yahoo Finance KSE delayed data",
     }
 
 
@@ -409,7 +369,7 @@ def is_closed_day(dt):
     if dt.weekday() >= 5 or date_str in EXTRA_CLOSED:
         return True
     try:
-        import holidays  # optional but included in requirements.txt
+        import holidays
         kr = holidays.KR(years=[dt.year])
         if dt.date() in kr:
             return True
@@ -418,36 +378,47 @@ def is_closed_day(dt):
     return False
 
 
-def today_quote_is_available(code):
-    try:
-        price, ts = yahoo_quote(next(x["symbol"] for x in UNIVERSE if x["code"] == code))
-        return price, ts
-    except Exception:
-        return None, None
-
-
 def maybe_open_new_session(obj, kst):
     date_str = kst.strftime("%Y-%m-%d")
     hm = int(kst.strftime("%H%M"))
-    if hm < 845 or is_closed_day(kst):
+    if hm < 845 or is_closed_day(kst) or obj.get("session_date") == date_str:
         return obj
-    if obj.get("session_date") == date_str:
-        return obj
-
     picks, meta = select_daily_picks()
+    # Keep a generous history window in a single JSON file for the static site.
     obj = {
-        "session_date": date_str,
-        "status": "WAITING_ENTRY",
-        "goal_pct": GOAL,
-        "stop_pct": STOP,
-        "updated_at": None,
-        "picks": picks,
-        "history": obj.get("history", [])[-60:],
-        "selection_meta": meta,
-        "last_error": None,
+        "session_date": date_str, "status": "WAITING_ENTRY", "goal_pct": GOAL, "stop_pct": STOP,
+        "updated_at": None, "picks": picks, "history": obj.get("history", [])[-120:],
+        "selection_meta": meta, "last_error": None,
         "server": "GitHub Actions · Yahoo Finance KSE delayed data",
     }
     return obj
+
+
+def history_record_for(obj):
+    return {
+        "session_date": obj.get("session_date"),
+        "result_pct": round(sum(float(p.get("return") or 0.0) for p in obj.get("picks", [])) / max(1, len(obj.get("picks", []))), 4),
+        "selection_generated_at": obj.get("selection_meta", {}).get("selection_generated_at"),
+        "picks": [
+            {
+                "trader_id": p.get("trader_id"),
+                "trader_name": p.get("trader_name"),
+                "role": p.get("role"),
+                "name": p.get("name"),
+                "code": p.get("code"),
+                "entry": p.get("entry"),
+                "exit_price": p.get("price"),
+                "return": p.get("return"),
+                "status": p.get("status"),
+                "score": p.get("score"),
+                "reason": p.get("reason"),
+                "training_metrics": p.get("training_metrics", {}),
+                "news_count": p.get("news_count", 0),
+                "nps_watch_weight": p.get("nps_watch_weight", 0.0),
+            }
+            for p in obj.get("picks", [])
+        ],
+    }
 
 
 def update_session(obj, kst):
@@ -455,8 +426,8 @@ def update_session(obj, kst):
     if not obj.get("picks"):
         return obj
 
-    running_any = False
     if 900 <= hm < 1530:
+        running_any = False
         for p in obj["picks"]:
             try:
                 symbol = next(x["symbol"] for x in UNIVERSE if x["code"] == p["code"])
@@ -467,17 +438,14 @@ def update_session(obj, kst):
                     p["entry"] = price
                     p["return"] = 0.0
                     p["status"] = "RUNNING"
-                else:
+                elif p["status"] == "RUNNING":
                     r = (price / p["entry"] - 1.0) * 100.0
                     if r >= GOAL:
-                        p["return"] = GOAL
-                        p["status"] = "TARGET_HIT"
+                        p["return"] = GOAL; p["status"] = "TARGET_HIT"
                     elif r <= STOP:
-                        p["return"] = STOP
-                        p["status"] = "STOPPED"
+                        p["return"] = STOP; p["status"] = "STOPPED"
                     else:
                         p["return"] = r
-                        p["status"] = "RUNNING"
                 if p["status"] == "RUNNING":
                     running_any = True
             except Exception as e:
@@ -485,7 +453,6 @@ def update_session(obj, kst):
         obj["status"] = "RUNNING" if running_any else "DONE"
 
     elif hm >= 1530:
-        results = []
         for p in obj["picks"]:
             try:
                 symbol = next(x["symbol"] for x in UNIVERSE if x["code"] == p["code"])
@@ -497,41 +464,23 @@ def update_session(obj, kst):
                     p["status"] = "DONE"
             except Exception as e:
                 p["error"] = str(e)
-            results.append(float(p["return"] or 0.0))
-
         obj["status"] = "DONE"
-        avg = sum(results) / len(results) if results else 0.0
         history = obj.setdefault("history", [])
         if not any(h.get("session_date") == obj.get("session_date") for h in history):
-            history.append({
-                "session_date": obj.get("session_date"),
-                "result_pct": round(avg, 4),
-                "picks": [
-                    {
-                        "name": p["name"],
-                        "code": p["code"],
-                        "return": p.get("return"),
-                        "score": p.get("score"),
-                    }
-                    for p in obj["picks"]
-                ],
-            })
-            obj["history"] = history[-60:]
+            history.append(history_record_for(obj))
+            obj["history"] = history[-120:]
     return obj
 
 
 def main():
     obj = load_state()
     kst = kst_now()
-
-    # Never create a session on a closed day.
     if is_closed_day(kst):
         obj["last_error"] = None
         obj["updated_at"] = datetime.now(timezone.utc).isoformat()
         save_state(obj)
         print(f"Closed day: {kst.date()} — no new session")
         return
-
     try:
         obj = maybe_open_new_session(obj, kst)
         obj = update_session(obj, kst)
