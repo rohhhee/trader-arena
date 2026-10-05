@@ -1,0 +1,13 @@
+{
+  "session_date": "2026-10-06",
+  "status": "WAITING_ENTRY",
+  "goal_pct": 5.0,
+  "stop_pct": -3.0,
+  "updated_at": null,
+  "picks": [
+    {"trader_id":"chart","trader_name":"윤서진","role":"차트 & 수급","name":"SK하이닉스","code":"000660","score":72,"reason":"단기 모멘텀·거래량 중심 후보","entry":null,"price":null,"return":null,"status":"WAITING_ENTRY"},
+    {"trader_id":"policy","trader_name":"박도현","role":"뉴스 & 정책","name":"한화오션","code":"042660","score":70,"reason":"정책·산업 촉매 + 단기 모멘텀 후보","entry":null,"price":null,"return":null,"status":"WAITING_ENTRY"},
+    {"trader_id":"nps","trader_name":"김하린","role":"NPS FLOW","name":"삼성전자","code":"005930","score":68,"reason":"국민연금 공개 보유정보 + 단기 모멘텀 후보","nps_hold_pct":7.9,"entry":null,"price":null,"return":null,"status":"WAITING_ENTRY"}
+  ],
+  "history": []
+}
