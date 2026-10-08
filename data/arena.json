@@ -3,7 +3,7 @@
   "status": "RUNNING",
   "goal_pct": 5.0,
   "stop_pct": -3.0,
-  "updated_at": "2026-10-08T04:27:25.779332+00:00",
+  "updated_at": "2026-10-08T04:45:26.106380+00:00",
   "picks": [
     {
       "trader_id": "chart",
@@ -20,7 +20,7 @@
       "target_pct": 5.0,
       "stop_pct": -3.0,
       "quote_source": "Yahoo Finance KSE delayed",
-      "quote_timestamp": 1791432442,
+      "quote_timestamp": 1791433521,
       "history_window": "최근 60거래일",
       "training_metrics": {
         "bars": 183,
@@ -56,7 +56,7 @@
       "target_pct": 5.0,
       "stop_pct": -3.0,
       "quote_source": "Yahoo Finance KSE delayed",
-      "quote_timestamp": 1791432442,
+      "quote_timestamp": 1791433525,
       "history_window": "최근 60거래일",
       "training_metrics": {
         "bars": 183,
@@ -86,13 +86,13 @@
       "score": 86.1,
       "reason": "60거래일 관찰 · NPS 공개정보 추적가중치 0.75 · 20일 +2.6% · 60일 +36.4% · 거래량 1.0배",
       "entry": 562000.0,
-      "price": 571500.0,
-      "return": 1.6903914590747249,
+      "price": 570000.0,
+      "return": 1.4234875444839812,
       "status": "RUNNING",
       "target_pct": 5.0,
       "stop_pct": -3.0,
       "quote_source": "Yahoo Finance KSE delayed",
-      "quote_timestamp": 1791432442,
+      "quote_timestamp": 1791433525,
       "history_window": "최근 60거래일",
       "training_metrics": {
         "bars": 183,
