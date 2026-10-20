@@ -3,7 +3,7 @@
   "status": "RUNNING",
   "goal_pct": 5.0,
   "stop_pct": -3.0,
-  "updated_at": "2026-10-20T00:10:12.329469+00:00",
+  "updated_at": "2026-10-20T00:20:08.728232+00:00",
   "picks": [
     {
       "trader_id": "chart",
@@ -50,13 +50,13 @@
       "score": 100,
       "reason": "60거래일 관찰 · 20일 +16.2% · 5일 +10.1% · 거래량 4.1배 · 촉매 보너스 0.0점 · 최근 뉴스 8건",
       "entry": 24000.0,
-      "price": 24000.0,
-      "return": 0.0,
+      "price": 23550.0,
+      "return": -1.8750000000000044,
       "status": "RUNNING",
       "target_pct": 5.0,
       "stop_pct": -3.0,
       "quote_source": "Yahoo Finance KSE delayed",
-      "quote_timestamp": 1792391427,
+      "quote_timestamp": 1792454407,
       "history_window": "최근 60거래일",
       "training_metrics": {
         "bars": 181,
