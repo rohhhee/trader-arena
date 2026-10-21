@@ -12,6 +12,7 @@ DATA = ROOT / "data" / "arena.json"
 GOAL = 5.0
 STOP = -3.0
 LOOKBACK_TRADING_DAYS = 60
+TRADER_IDS = ("chart", "policy", "nps", "ensemble")
 YAHOO_RANGE = "9mo"
 REQUEST_TIMEOUT = 20
 
@@ -60,9 +61,10 @@ NEWS_KEYWORDS = [
 ]
 
 TRADERS = {
-    "chart": {"name": "윤서진", "role": "차트 & 수급"},
-    "policy": {"name": "박도현", "role": "뉴스 & 정책"},
-    "nps": {"name": "김하린", "role": "NPS FLOW"},
+    "chart": {"name": "차트 읽는 매수요정", "role": "추세 & 리스크"},
+    "policy": {"name": "뉴스 줍는 탐정", "role": "뉴스 & 촉매"},
+    "nps": {"name": "연기금 레이더", "role": "공개정보 워치리스트"},
+    "ensemble": {"name": "밸런스 조정장", "role": "3전략 종합"},
 }
 
 
@@ -203,38 +205,58 @@ def clamp(v, lo=0, hi=100):
     return max(lo, min(hi, v))
 
 
+def risk_penalty(m):
+    """Penalize volatility, extreme short-term extension, and abnormal volume spikes."""
+    penalty = max(0.0, m["volatility20"] - 3.0) * 2.2
+    penalty += max(0.0, m["ret_5d"] - 7.0) * 0.9
+    penalty += max(0.0, m["vol_ratio"] - 3.0) * 2.0
+    # Avoid buying at the very top of the recent range after a sharp short-term run.
+    if m["position60"] >= 95 and m["ret_5d"] >= 6:
+        penalty += 5.0
+    return penalty
+
+
 def chart_score(m):
-    score = 50.0
-    score += max(-20, min(20, m["ret_20d"] * 1.8))
-    score += max(-15, min(15, m["ret_60d"] * 0.9))
-    score += 14 if m["price"] > m["sma20"] > m["sma60"] else 0
-    score += 7 if m["ret_5d"] > 0 else max(-7, m["ret_5d"])
-    score += max(-8, min(12, (m["vol_ratio"] - 1) * 20))
-    score += 8 if m["position60"] >= 70 else 0
-    score -= max(0, m["volatility20"] - 4) * 1.5
-    return round(clamp(score), 1)
+    score = 48.0
+    score += max(-15, min(15, m["ret_20d"] * 1.0))
+    score += max(-10, min(10, m["ret_60d"] * 0.45))
+    score += 10 if m["price"] > m["sma20"] > m["sma60"] else (-5 if m["price"] < m["sma20"] < m["sma60"] else 0)
+    score += max(-6, min(6, m["ret_5d"] * 0.45))
+    score += max(-5, min(7, (m["vol_ratio"] - 1) * 10))
+    score += 4 if 45 <= m["position60"] <= 90 else (-3 if m["position60"] > 97 else 0)
+    score -= risk_penalty(m)
+    return round(clamp(score, 5, 95), 1)
 
 
 def policy_score(m, news_score):
-    score = 45.0
-    score += max(-15, min(18, m["ret_20d"] * 1.5))
-    score += max(-10, min(14, (m["ret_20d"] - m["ret_60d"] / 3) * 2.0))
-    score += max(-5, min(16, (m["vol_ratio"] - 1) * 28))
-    score += 10 if m["price"] >= m["recent_high20"] * 0.98 else 0
-    score += news_score
-    score -= max(0, m["volatility20"] - 5) * 1.2
-    return round(clamp(score), 1)
+    score = 46.0
+    score += max(-12, min(13, m["ret_20d"] * 0.9))
+    score += max(-8, min(8, (m["ret_20d"] - m["ret_60d"] / 3) * 1.2))
+    score += max(-4, min(8, (m["vol_ratio"] - 1) * 14))
+    score += 5 if m["price"] >= m["recent_high20"] * 0.96 else 0
+    score += min(8.0, news_score * 0.5)
+    score -= risk_penalty(m) * 0.9
+    return round(clamp(score, 5, 95), 1)
 
 
 def nps_score(m, nps_weight):
-    score = 40.0
-    score += nps_weight * 28
-    score += max(-12, min(15, m["ret_60d"] * 0.75))
-    score += max(-10, min(15, m["ret_20d"] * 1.1))
-    score += 8 if m["price"] > m["sma60"] else -6
-    score += max(-6, min(8, (m["vol_ratio"] - 1) * 14))
-    score -= max(0, m["volatility20"] - 4) * 1.0
-    return round(clamp(score), 1)
+    # Watchlist membership is only a proxy, not real-time pension-fund flow data.
+    score = 45.0
+    score += nps_weight * 10
+    score += max(-10, min(11, m["ret_60d"] * 0.5))
+    score += max(-8, min(9, m["ret_20d"] * 0.65))
+    score += 6 if m["price"] > m["sma60"] else -6
+    score += max(-4, min(5, (m["vol_ratio"] - 1) * 8))
+    score -= risk_penalty(m) * 0.8
+    return round(clamp(score, 5, 95), 1)
+
+
+def ensemble_score(item, rank_by_code):
+    """Rank consensus across the three independent strategies, with a risk haircut."""
+    m = item["metrics"]
+    ranks = [rank_by_code[s].get(item["code"], 0.0) for s in ("chart", "policy", "nps")]
+    consensus = sum(ranks) / len(ranks)
+    return round(clamp(20 + consensus * 75 - risk_penalty(m) * 1.5, 5, 95), 1)
 
 
 def news_score_for(name, news):
@@ -250,7 +272,7 @@ def news_score_for(name, news):
 def choose_unique(score_lists):
     selected = {}
     used = set()
-    for trader_id in ("chart", "policy", "nps"):
+    for trader_id in TRADER_IDS:
         for item in score_lists[trader_id]:
             if item["code"] not in used:
                 selected[trader_id] = item
@@ -282,7 +304,7 @@ def select_daily_picks():
         news_bonus[item["code"]] = news_score_for(item["name"], yahoo_news(item["name"]))
         time.sleep(0.10)
 
-    score_lists = {"chart": [], "policy": [], "nps": []}
+    score_lists = {"chart": [], "policy": [], "nps": [], "ensemble": []}
     for item in metrics_by_code.values():
         m = item["metrics"]
         p_news, news_count = news_bonus.get(item["code"], (0.0, 0))
@@ -317,12 +339,35 @@ def select_daily_picks():
             ),
         })
 
-    for scores in score_lists.values():
-        scores.sort(key=lambda x: (x["score"], x["metrics"]["ret_20d"]), reverse=True)
+    for trader_id in ("chart", "policy", "nps"):
+        score_lists[trader_id].sort(key=lambda x: (x["score"], x["metrics"]["ret_20d"]), reverse=True)
+
+    # Convert each strategy's score to a percentile rank so one strategy's score scale
+    # cannot dominate the ensemble. The ensemble considers the whole eligible universe.
+    rank_by_code = {}
+    for trader_id in ("chart", "policy", "nps"):
+        ordered = score_lists[trader_id]
+        denom = max(1, len(ordered) - 1)
+        rank_by_code[trader_id] = {
+            item["code"]: 1.0 - (i / denom) for i, item in enumerate(ordered)
+        }
+    base_by_code = {item["code"]: item for item in score_lists["chart"]}
+    for item in base_by_code.values():
+        m = item["metrics"]
+        consensus = ensemble_score(item, rank_by_code)
+        ranks = [rank_by_code[t].get(item["code"], 0.0) for t in ("chart", "policy", "nps")]
+        reason = (
+            f"3전략 합의 점수 · 차트 순위 {rank_by_code['chart'][item['code']]*100:.0f}백분위 · "
+            f"뉴스 순위 {rank_by_code['policy'][item['code']]*100:.0f}백분위 · "
+            f"워치리스트 순위 {rank_by_code['nps'][item['code']]*100:.0f}백분위 · "
+            f"5일 {m['ret_5d']:+.1f}% · 변동성 {m['volatility20']:.1f}% · 위험조정 점수"
+        )
+        score_lists["ensemble"].append({**item, "score": consensus, "strategy_reason": reason})
+    score_lists["ensemble"].sort(key=lambda x: (x["score"], x["metrics"]["ret_20d"]), reverse=True)
 
     selected = choose_unique(score_lists)
     output = []
-    for trader_id in ("chart", "policy", "nps"):
+    for trader_id in TRADER_IDS:
         item = selected[trader_id]
         output.append({
             "trader_id": trader_id,
@@ -340,9 +385,10 @@ def select_daily_picks():
     return output, {
         "lookback_trading_days": LOOKBACK_TRADING_DAYS,
         "data_range": YAHOO_RANGE,
-        "selection_method": "rule-based historical scoring",
+        "selection_method": "risk-adjusted rule scores + percentile-rank ensemble",
         "selection_generated_at": kst_now().isoformat(),
         "selection_universe_size": len(metrics_by_code),
+        "strategy_count": len(TRADER_IDS),
     }
 
 
