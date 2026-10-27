@@ -3,7 +3,7 @@
   "status": "DONE",
   "goal_pct": 5.0,
   "stop_pct": -3.0,
-  "updated_at": "2026-10-27T06:50:00.146122+00:00",
+  "updated_at": "2026-10-27T07:25:29.408446+00:00",
   "picks": [
     {
       "trader_id": "chart",
@@ -14,13 +14,13 @@
       "score": 65.6,
       "reason": "60거래일 관찰 · 20일 +6.4% · 60일 +9.2% · 5일 -6.0% · 거래량 0.6배 · 20/60일선 정배열",
       "entry": 22550.0,
-      "price": 22300.0,
+      "price": 22400.0,
       "return": -1.1086474501108667,
       "status": "DONE",
       "target_pct": 5.0,
       "stop_pct": -3.0,
       "quote_source": "Yahoo Finance KSE delayed",
-      "quote_timestamp": 1793081996,
+      "quote_timestamp": 1793082624,
       "history_window": "최근 60거래일",
       "training_metrics": {
         "bars": 181,
@@ -50,13 +50,13 @@
       "score": 63.5,
       "reason": "60거래일 관찰 · 20일 +5.1% · 5일 +1.8% · 거래량 1.1배 · 촉매 보너스 0.0점 · 최근 뉴스 0건",
       "entry": 1452000.0,
-      "price": 1365000.0,
+      "price": 1374000.0,
       "return": -3.0,
       "status": "STOPPED",
       "target_pct": 5.0,
       "stop_pct": -3.0,
       "quote_source": "Yahoo Finance KSE delayed",
-      "quote_timestamp": 1793081998,
+      "quote_timestamp": 1793082626,
       "history_window": "최근 60거래일",
       "training_metrics": {
         "bars": 181,
@@ -92,7 +92,7 @@
       "target_pct": 5.0,
       "stop_pct": -3.0,
       "quote_source": "Yahoo Finance KSE delayed",
-      "quote_timestamp": 1793081999,
+      "quote_timestamp": 1793082604,
       "history_window": "최근 60거래일",
       "training_metrics": {
         "bars": 181,
@@ -128,7 +128,7 @@
       "target_pct": 5.0,
       "stop_pct": -3.0,
       "quote_source": "Yahoo Finance KSE delayed",
-      "quote_timestamp": 1793081990,
+      "quote_timestamp": 1793082630,
       "history_window": "최근 60거래일",
       "training_metrics": {
         "bars": 181,
