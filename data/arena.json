@@ -3,7 +3,7 @@
   "status": "RUNNING",
   "goal_pct": 5.0,
   "stop_pct": -3.0,
-  "updated_at": "2026-11-27T16:39:39.545507+00:00",
+  "updated_at": "2026-11-27T16:56:33.043416+00:00",
   "picks": [
     {
       "trader_id": "chart",
